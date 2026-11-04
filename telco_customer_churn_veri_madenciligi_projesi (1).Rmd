@@ -1,0 +1,458 @@
+---
+title: "Veri Madenciliği Projesi: Telco Müşteri Kaybı (Customer Churn)"
+author: "Grup Çalışması"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+  pdf_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# A) Problem Tanımı
+
+Bu projede telekomünikasyon sektöründe müşterinin aldığı hizmeti bırakıp bırakmayacağı, yani **customer churn** problemi incelenmiştir. Churn, bir müşterinin şirketten ayrılması veya hizmeti kullanmayı bırakması anlamına gelir.
+
+Bu problem işletmeler için önemlidir. Çünkü mevcut müşteriyi elde tutmak, yeni müşteri kazanmaktan çoğu zaman daha düşük maliyetlidir. Bu nedenle hangi müşterilerin ayrılma ihtimalinin yüksek olduğunu önceden tahmin etmek, işletmelerin müşteri kaybını azaltmasına yardımcı olabilir.
+
+Bu proje bir **sınıflandırma problemidir**. Çünkü hedef değişken olan `Churn`, müşterinin ayrılıp ayrılmadığını göstermektedir:
+
+- `Yes`: Müşteri hizmeti bırakmıştır.
+- `No`: Müşteri hizmeti bırakmamıştır.
+
+Bu çalışmada amaç, müşteri özelliklerine bakarak müşterinin churn durumunu tahmin etmektir.
+
+## Araştırma Soruları
+
+1. Hangi müşteri özellikleri churn ile ilişkilidir?
+2. Kontrat türü, aylık ödeme ve hizmet süresi churn üzerinde etkili midir?
+3. Logistic Regression ve Decision Tree modellerinden hangisi daha başarılı sonuç verir?
+
+## Hipotezler
+
+Bu projede alpha değeri `0.05` olarak kabul edilmiştir.
+
+**Hipotez 1: Kontrat türü ile churn arasında ilişki vardır.**
+
+- H0: Kontrat türü ile churn arasında anlamlı bir ilişki yoktur.
+- H1: Kontrat türü ile churn arasında anlamlı bir ilişki vardır.
+
+**Hipotez 2: Aylık ödeme miktarı churn durumuna göre farklılık gösterir.**
+
+- H0: Churn olan ve olmayan müşterilerin aylık ödeme ortalamaları arasında anlamlı fark yoktur.
+- H1: Churn olan ve olmayan müşterilerin aylık ödeme ortalamaları arasında anlamlı fark vardır.
+
+# B) Veri Seti Tanıtımı
+
+Kullanılan veri seti Kaggle üzerinden alınmıştır:
+
+**Veri seti adı:** Telco Customer Churn  
+**Kaynak:** https://www.kaggle.com/datasets/blastchar/telco-customer-churn
+
+Bu veri setinde bir telekom şirketine ait müşteri bilgileri yer almaktadır. Veri setinde müşterilerin demografik bilgileri, kullandıkları hizmetler, ödeme bilgileri ve churn durumu bulunmaktadır.
+
+```{r libraries}
+library(tidyverse)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+```
+
+## Verinin Yüklenmesi
+
+Not: Kaggle'dan indirilen dosya adı genellikle `WA_Fn-UseC_-Telco-Customer-Churn.csv` şeklindedir. Dosya R Markdown dosyası ile aynı klasöre konulmalıdır.
+
+```{r load-data}
+data <- read.csv("WA_Fn-UseC_-Telco-Customer-Churn.csv", stringsAsFactors = FALSE)
+```
+
+## İlk 5 Gözlem
+
+```{r head-data}
+head(data, 5)
+```
+
+## Gözlem ve Değişken Sayısı
+
+```{r dimensions}
+n <- nrow(data)
+p <- ncol(data)
+
+n
+p
+```
+
+Veri setinde `r n` gözlem ve `r p` değişken bulunmaktadır. Bu nedenle proje yönergesinde istenen minimum 200 gözlem ve minimum 10 değişken şartını karşılamaktadır.
+
+## Değişken Türleri
+
+```{r variable-types}
+str(data)
+```
+
+Veri setinde hem kategorik hem de sayısal değişkenler bulunmaktadır.
+
+**Sayısal değişken örnekleri:**
+
+- `tenure`: Müşterinin şirkette kaldığı ay sayısı
+- `MonthlyCharges`: Aylık ödeme miktarı
+- `TotalCharges`: Toplam ödeme miktarı
+
+**Kategorik değişken örnekleri:**
+
+- `gender`: Cinsiyet
+- `Partner`: Partner durumu
+- `InternetService`: İnternet hizmeti türü
+- `Contract`: Kontrat türü
+- `PaymentMethod`: Ödeme yöntemi
+- `Churn`: Müşterinin ayrılıp ayrılmadığı
+
+## Özet İstatistikler
+
+```{r summary-data}
+summary(data)
+```
+
+# Veri Görselleştirme
+
+Bu bölümde veri setindeki bazı değişkenler farklı grafik türleriyle gösterilmiştir.
+
+## Churn Dağılımı
+
+```{r churn-plot}
+ggplot(data, aes(x = Churn)) +
+  geom_bar() +
+  labs(title = "Churn Dağılımı", x = "Churn", y = "Müşteri Sayısı")
+```
+
+**Yorum:** Bu grafik müşterilerin kaçının hizmeti bırakıp bırakmadığını göstermektedir. Genellikle churn olmayan müşteri sayısı daha fazladır. Bu durum veri setinde sınıf dengesizliği olabileceğini gösterir.
+
+## Kontrat Türüne Göre Churn
+
+```{r contract-churn-plot}
+ggplot(data, aes(x = Contract, fill = Churn)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Kontrat Türüne Göre Churn", x = "Kontrat Türü", y = "Müşteri Sayısı")
+```
+
+**Yorum:** Aylık kontratı olan müşterilerde churn oranının daha yüksek olması beklenmektedir. Uzun süreli kontratlar müşteri bağlılığını artırabilir.
+
+## Aylık Ödeme Dağılımı
+
+```{r monthlycharges-hist}
+ggplot(data, aes(x = MonthlyCharges)) +
+  geom_histogram(bins = 30) +
+  labs(title = "Aylık Ödeme Dağılımı", x = "Monthly Charges", y = "Frekans")
+```
+
+**Yorum:** Bu grafik müşterilerin aylık ödeme miktarlarının dağılımını göstermektedir. Aylık ödeme miktarı churn tahmininde önemli bir değişken olabilir.
+
+## Churn Durumuna Göre Aylık Ödeme Boxplot
+
+```{r monthlycharges-boxplot}
+ggplot(data, aes(x = Churn, y = MonthlyCharges)) +
+  geom_boxplot() +
+  labs(title = "Churn Durumuna Göre Aylık Ödeme", x = "Churn", y = "Monthly Charges")
+```
+
+**Yorum:** Boxplot grafiği ile churn olan ve olmayan müşterilerin aylık ödeme dağılımları karşılaştırılmıştır. Eğer churn olan müşterilerin aylık ödemeleri daha yüksekse, bu durum aylık ücretin müşteri kaybı ile ilişkili olabileceğini gösterir.
+
+## Hizmet Süresi ve Aylık Ödeme İlişkisi
+
+```{r scatter-plot}
+ggplot(data, aes(x = tenure, y = MonthlyCharges, color = Churn)) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Hizmet Süresi ve Aylık Ödeme İlişkisi", x = "Tenure", y = "Monthly Charges")
+```
+
+**Yorum:** Scatter plot ile hizmet süresi ve aylık ödeme arasındaki ilişki gözlemlenmiştir. Churn olan müşterilerin hangi bölgelerde yoğunlaştığı bu grafik üzerinden incelenebilir.
+
+# C) Veri Ön İşleme
+
+Veri ön işleme, veri madenciliği sürecinin önemli aşamalarından biridir. Bu bölümde eksik veri, aykırı değer, tutarsızlık, dönüşüm ve özellik seçimi işlemleri yapılmıştır.
+
+## Gereksiz Değişkenin Çıkarılması
+
+`customerID` değişkeni müşteri kimlik numarasıdır. Tahmin açısından anlamlı bir bilgi taşımadığı için veri setinden çıkarılmıştır.
+
+```{r remove-id}
+data <- data %>% select(-customerID)
+```
+
+## Veri Tipi Dönüşümü
+
+`TotalCharges` değişkeni veri setinde karakter olarak gelmektedir. Bu değişken sayısal hale getirilmiştir.
+
+```{r totalcharges-convert}
+data$TotalCharges <- as.numeric(data$TotalCharges)
+```
+
+## Eksik Veri Analizi
+
+```{r missing-values}
+missing_count <- colSums(is.na(data))
+missing_percent <- round(colSums(is.na(data)) / nrow(data) * 100, 2)
+
+missing_table <- data.frame(
+  Variable = names(missing_count),
+  Missing_Count = missing_count,
+  Missing_Percent = missing_percent
+)
+
+missing_table
+```
+
+**Yorum:** Eksik veri analizi sonucunda hangi değişkenlerde eksik değer olduğu incelenmiştir. `TotalCharges` değişkeninde eksik değer varsa, bu değerler medyan ile doldurulmuştur. Medyan yöntemi, aykırı değerlere ortalamaya göre daha dayanıklı olduğu için tercih edilmiştir.
+
+```{r missing-imputation}
+data$TotalCharges[is.na(data$TotalCharges)] <- median(data$TotalCharges, na.rm = TRUE)
+```
+
+## Kategorik Değişkenlerin Faktöre Dönüştürülmesi
+
+```{r factor-convert}
+data <- data %>% mutate_if(is.character, as.factor)
+str(data)
+```
+
+## Aykırı Değer Analizi
+
+Sayısal değişkenler için boxplot ile aykırı değer analizi yapılmıştır.
+
+```{r outlier-boxplots}
+numeric_vars <- data %>% select(where(is.numeric))
+
+boxplot(numeric_vars$tenure, main = "Tenure Boxplot", ylab = "tenure")
+boxplot(numeric_vars$MonthlyCharges, main = "MonthlyCharges Boxplot", ylab = "MonthlyCharges")
+boxplot(numeric_vars$TotalCharges, main = "TotalCharges Boxplot", ylab = "TotalCharges")
+```
+
+**Yorum:** Boxplot grafiklerinde aykırı değerler incelenmiştir. Bu projede aykırı değerler doğrudan silinmemiştir. Çünkü aylık ödeme veya toplam ödeme gibi değişkenlerde yüksek değerler gerçek müşteri davranışını temsil edebilir. Bu nedenle modellemede bu gözlemler korunmuştur.
+
+## Tutarsızlıkların Kontrolü
+
+```{r consistency-check}
+summary(data$tenure)
+summary(data$MonthlyCharges)
+summary(data$TotalCharges)
+levels(data$Churn)
+```
+
+**Yorum:** Sayısal değişkenlerde negatif değer gibi mantıksız değer olup olmadığı kontrol edilmiştir. Kategorik değişkenlerde de sınıf isimleri incelenmiştir.
+
+## Korelasyon Analizi
+
+Korelasyon analizi sayısal değişkenler arasındaki doğrusal ilişkiyi incelemek için kullanılmıştır.
+
+```{r correlation-analysis}
+cor_matrix <- cor(numeric_vars)
+cor_matrix
+
+corrplot(cor_matrix, method = "color", addCoef.col = "black", number.cex = 0.7)
+```
+
+**Yorum:** Korelasyon matrisi ile sayısal değişkenler arasındaki ilişki incelenmiştir. `tenure` ve `TotalCharges` arasında yüksek ilişki çıkması beklenebilir. Çünkü müşteri şirkette ne kadar uzun kalırsa toplam ödeme miktarı da genellikle artar.
+
+## Modelleme İçin Veri Hazırlığı
+
+Hedef değişken olan `Churn` faktör olarak düzenlenmiştir.
+
+```{r target-factor}
+data$Churn <- factor(data$Churn, levels = c("No", "Yes"))
+```
+
+Veri eğitim ve test olarak ikiye ayrılmıştır. Verinin %70'i eğitim, %30'u test için kullanılmıştır.
+
+```{r train-test-split}
+set.seed(123)
+train_index <- createDataPartition(data$Churn, p = 0.70, list = FALSE)
+train_data <- data[train_index, ]
+test_data <- data[-train_index, ]
+```
+
+## Dummy Değişken Dönüşümü
+
+Logistic Regression modeli için kategorik değişkenler dummy değişkenlere dönüştürülmüştür.
+
+```{r dummy-variables}
+dummy_model <- dummyVars(Churn ~ ., data = train_data)
+
+train_x <- predict(dummy_model, newdata = train_data)
+test_x <- predict(dummy_model, newdata = test_data)
+
+train_model_data <- data.frame(train_x)
+train_model_data$Churn <- train_data$Churn
+
+test_model_data <- data.frame(test_x)
+test_model_data$Churn <- test_data$Churn
+```
+
+## Standardizasyon
+
+Logistic Regression modelinde sayısal değişkenlerin ölçek farkını azaltmak için standardizasyon uygulanmıştır.
+
+```{r scaling}
+preprocess_model <- preProcess(train_model_data %>% select(-Churn), method = c("center", "scale"))
+
+train_scaled <- predict(preprocess_model, train_model_data %>% select(-Churn))
+test_scaled <- predict(preprocess_model, test_model_data %>% select(-Churn))
+
+train_scaled$Churn <- train_model_data$Churn
+test_scaled$Churn <- test_model_data$Churn
+```
+
+# Hipotez Testleri
+
+## Hipotez 1: Kontrat Türü ile Churn İlişkisi
+
+Bu hipotez için Ki-kare testi kullanılmıştır.
+
+```{r chi-square-test}
+contract_table <- table(data$Contract, data$Churn)
+contract_table
+
+chisq_result <- chisq.test(contract_table)
+chisq_result
+```
+
+**Yorum:** Eğer p-değeri 0.05'ten küçükse H0 reddedilir. Bu durumda kontrat türü ile churn arasında anlamlı bir ilişki olduğu söylenir.
+
+## Hipotez 2: Aylık Ödeme ve Churn İlişkisi
+
+Bu hipotez için iki grup ortalamasını karşılaştırmak amacıyla t-testi yapılmıştır.
+
+```{r t-test}
+t_test_result <- t.test(MonthlyCharges ~ Churn, data = data)
+t_test_result
+```
+
+**Yorum:** Eğer p-değeri 0.05'ten küçükse H0 reddedilir. Bu durumda churn olan ve olmayan müşterilerin aylık ödeme ortalamaları arasında anlamlı fark olduğu söylenir.
+
+# D) Modelleme
+
+Bu projede iki farklı sınıflandırma modeli kullanılmıştır:
+
+1. Logistic Regression
+2. Decision Tree
+
+Bu modeller seçilmiştir çünkü ikisi de sınıflandırma problemlerinde yaygın kullanılır ve yorumlanması kolaydır.
+
+## Model 1: Logistic Regression
+
+Logistic Regression, bağımlı değişkenin iki sınıflı olduğu durumlarda kullanılan bir sınıflandırma yöntemidir. Bu projede `Churn` değişkeni `Yes` ve `No` olmak üzere iki sınıftan oluştuğu için uygundur.
+
+```{r logistic-model}
+log_model <- glm(Churn ~ ., data = train_scaled, family = binomial)
+summary(log_model)
+```
+
+## Logistic Regression Tahminleri
+
+```{r logistic-prediction}
+log_prob <- predict(log_model, newdata = test_scaled, type = "response")
+log_pred <- ifelse(log_prob > 0.5, "Yes", "No")
+log_pred <- factor(log_pred, levels = c("No", "Yes"))
+
+log_conf <- confusionMatrix(log_pred, test_scaled$Churn, positive = "Yes")
+log_conf
+```
+
+## Model 2: Decision Tree
+
+Decision Tree, veriyi karar kuralları ile sınıflandıran basit ve açıklanabilir bir yöntemdir. Hangi değişkenlerin churn tahmininde etkili olduğunu görsel olarak incelemeye yardımcı olur.
+
+```{r decision-tree-model}
+tree_model <- rpart(Churn ~ ., data = train_data, method = "class")
+rpart.plot(tree_model)
+```
+
+## Decision Tree Tahminleri
+
+```{r decision-tree-prediction}
+tree_pred <- predict(tree_model, newdata = test_data, type = "class")
+
+tree_conf <- confusionMatrix(tree_pred, test_data$Churn, positive = "Yes")
+tree_conf
+```
+
+# E) Model Değerlendirme, Sonuç ve Yorum
+
+Sınıflandırma modelleri için Accuracy, Precision, Recall ve Confusion Matrix değerleri kullanılmıştır.
+
+```{r model-comparison}
+log_accuracy <- log_conf$overall["Accuracy"]
+log_precision <- log_conf$byClass["Precision"]
+log_recall <- log_conf$byClass["Recall"]
+
+tree_accuracy <- tree_conf$overall["Accuracy"]
+tree_precision <- tree_conf$byClass["Precision"]
+tree_recall <- tree_conf$byClass["Recall"]
+
+comparison <- data.frame(
+  Model = c("Logistic Regression", "Decision Tree"),
+  Accuracy = c(log_accuracy, tree_accuracy),
+  Precision = c(log_precision, tree_precision),
+  Recall = c(log_recall, tree_recall)
+)
+
+comparison
+```
+
+## Sonuçların Yorumu
+
+Bu projede müşteri kaybı problemi bir sınıflandırma problemi olarak ele alınmıştır. İlk olarak veri seti tanıtılmış, eksik veriler incelenmiş, gerekli dönüşümler yapılmış ve veri görselleştirilmiştir.
+
+Modelleme aşamasında Logistic Regression ve Decision Tree algoritmaları uygulanmıştır. İki modelin performansı Accuracy, Precision ve Recall değerleri ile karşılaştırılmıştır.
+
+Eğer Logistic Regression modeli daha yüksek Accuracy ve Recall değerine sahipse, bu model müşteri kaybını tahmin etmek için daha başarılı kabul edilebilir. Eğer Decision Tree modeli daha düşük performans verse bile, karar ağacı yapısı sayesinde yorumlanabilirliği yüksektir.
+
+Bu çalışmada özellikle `Contract`, `tenure`, `MonthlyCharges` ve `TotalCharges` gibi değişkenlerin churn ile ilişkili olabileceği düşünülmektedir.
+
+## Hangi Model Daha İyi?
+
+```{r best-model}
+comparison[which.max(comparison$Accuracy), ]
+```
+
+Accuracy değeri en yüksek olan model genel başarı açısından daha iyi kabul edilmiştir. Ancak churn problemi için sadece accuracy yeterli olmayabilir. Çünkü churn olan müşterileri doğru yakalamak işletme açısından önemlidir. Bu nedenle Recall değeri de dikkate alınmalıdır.
+
+## Beklenen ve Beklenmeyen Bulgular
+
+Beklenen bulgu olarak aylık kontratı olan müşterilerin churn oranının daha yüksek olması beklenmektedir. Çünkü uzun dönemli kontratlar müşteriyi firmaya daha bağlı hale getirebilir.
+
+Ayrıca aylık ödeme miktarı yüksek olan müşterilerin churn olasılığının daha fazla çıkması da mantıklı bir sonuç olabilir. Çünkü yüksek fiyat müşteri memnuniyetsizliğini artırabilir.
+
+Beklenmeyen bulgular model sonuçlarına göre yorumlanmalıdır. Örneğin bazı hizmetleri kullanan müşterilerin beklenenden daha fazla churn etmesi, hizmet kalitesi veya fiyatlandırma ile ilgili olabilir.
+
+## Veri Setinin Sınırlılıkları
+
+Bu veri setinin bazı sınırlılıkları vardır:
+
+- Veri tek bir telekom şirketine aittir.
+- Müşteri memnuniyeti gibi psikolojik değişkenler bulunmamaktadır.
+- Veride zaman bilgisi sınırlıdır.
+- Churn nedenleri doğrudan yer almamaktadır.
+
+## Gerçek Hayatta Kullanımı
+
+Bu çalışma gerçek hayatta müşteri kaybını azaltmak için kullanılabilir. Churn olasılığı yüksek müşteriler önceden tespit edilerek bu müşterilere özel kampanya, indirim veya müşteri hizmeti desteği sağlanabilir.
+
+Örneğin:
+
+- Aylık kontratı olan müşterilere uzun dönemli kontrat teklif edilebilir.
+- Aylık ödemesi yüksek olan müşterilere indirim uygulanabilir.
+- Yeni müşterilerin ilk aylarda ayrılmasını önlemek için özel destek verilebilir.
+
+# Genel Sonuç
+
+Bu proje kapsamında Telco Customer Churn veri seti kullanılarak müşteri kaybı problemi incelenmiştir. Veri madenciliği sürecine uygun olarak veri seçimi, veri tanıtımı, veri ön işleme, görselleştirme, modelleme ve değerlendirme aşamaları uygulanmıştır.
+
+Sonuç olarak, müşteri churn tahmini için Logistic Regression ve Decision Tree modelleri karşılaştırılmıştır. Elde edilen sonuçlara göre en başarılı model belirlenmiş ve sonuçlar işletme açısından yorumlanmıştır.
