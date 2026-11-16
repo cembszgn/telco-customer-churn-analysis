@@ -1,0 +1,13 @@
+PROJE ÇALIŞTIRMA NOTU
+
+1) Python 3.10+ ortamı açın.
+2) pip install -r requirements.txt
+3) python src/train.py
+4) Alternatif: notebooks/Telco_Churn_Analizi.ipynb dosyasını Jupyter/Colab'da açıp hücreleri sırayla çalıştırın.
+
+Veri kaynağı: IBM Telco Customer Churn örnek veri seti. CSV dosyası data/raw/Telco-Customer-Churn.csv konumunda olmalıdır.
+
+Gerçek test sonuçları (random_state=42, %80/%20 stratified):
+Random Forest: Accuracy 0.768, Precision 0.548, Recall 0.717, F1 0.621, ROC-AUC 0.831.
+Logistic Regression: Accuracy 0.726, Precision 0.490, Recall 0.797, F1 0.607, ROC-AUC 0.835.
+F1 ölçütüne göre Random Forest seçilmiştir. Churn recall açısından Logistic Regression daha yüksektir.
